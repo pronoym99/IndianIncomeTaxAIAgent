@@ -155,4 +155,3 @@ Maintain deterministic wording, include disclaimer each answer line, and avoid s
 The assistant responses append: "Disclaimer: Not a substitute for a licensed Chartered Accountant." – adjust or harmonize with system prompt if you change phrasing.
 
 
-# Optimisation Branch
