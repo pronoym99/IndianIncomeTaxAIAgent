@@ -37,9 +37,14 @@ KB_MATRIX = np.array([rec["embedding"] for rec in KB], dtype="float32")
 KB_NORMS = np.linalg.norm(KB_MATRIX, axis=1, keepdims=True) + 1e-9
 
 @lru_cache(maxsize=256)
-def embed(q: str):
+def _embed_cached(q: str):
+    """Internal cached embedding function. Input should be normalized."""
     r = client.embeddings.create(model=EMBED_MODEL, input=q)
     return tuple(r.data[0].embedding)  # tuples are hashable for caching
+
+def embed(q: str):
+    """Get embedding for query string. Returns numpy array."""
+    return _embed_cached(q)
 
 def retrieve(query: str, k=TOP_K):
     # Normalize query for better cache hits
@@ -54,26 +59,25 @@ def retrieve(query: str, k=TOP_K):
     return [KB[i] for i in top_indices]
 
 def sanitize_input(text: str) -> str:
+    """Sanitize user input to prevent prompt injection."""
     text = text[:MAX_QUESTION_LENGTH]
     # Remove potential role injection patterns more robustly
     text = re.sub(r"\b(system|assistant|user)\s*:?", "", text, flags=re.IGNORECASE)
     return text.strip()
 
 def validate_history(history: list[dict]) -> list[dict]:
-    # Limit history size to prevent DoS
-    if len(history) > 10:
-        logger.warning(f"History truncated from {len(history)} to 10 messages")
-        history = history[-10:]
+    """Validate and sanitize chat history."""
+    # Limit to last 5 messages only
+    if len(history) > 5:
+        logger.warning(f"History truncated from {len(history)} to 5 messages")
     
     validated = []
     for msg in history[-5:]:
         role = msg.get("role", "")
         content = msg.get("content", "")
         if role in ALLOWED_ROLES and isinstance(content, str):
-            # Sanitize content to prevent injection after truncation
-            sanitized_content = content[:MAX_QUESTION_LENGTH]
-            sanitized_content = re.sub(r"\b(system|assistant|user)\s*:?", "", sanitized_content, flags=re.IGNORECASE)
-            validated.append({"role": role, "content": sanitized_content.strip()})
+            # Reuse sanitize_input for consistent sanitization
+            validated.append({"role": role, "content": sanitize_input(content)})
     return validated
 
 def _load_system_prompt():
