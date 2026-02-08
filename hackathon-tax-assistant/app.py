@@ -26,6 +26,10 @@ if EXPECTED_HASH and hashlib.sha256(data).hexdigest() != EXPECTED_HASH:
     raise RuntimeError("Knowledge base file integrity check failed!")
 KB = pickle.loads(data)
 
+# Validate KB structure
+if not KB or not all(isinstance(rec, dict) and "embedding" in rec for rec in KB):
+    raise ValueError("Invalid knowledge base format: all records must have 'embedding' field")
+
 client = create_client()
 
 # Pre-compute vectorized KB matrix for fast cosine similarity
@@ -38,25 +42,38 @@ def embed(q: str):
     return tuple(r.data[0].embedding)  # tuples are hashable for caching
 
 def retrieve(query: str, k=TOP_K):
-    qv = np.array(embed(query), dtype="float32")
+    # Normalize query for better cache hits
+    normalized_query = query.lower().strip()
+    qv = np.array(embed(normalized_query), dtype="float32")
     qv_norm = qv / (np.linalg.norm(qv) + 1e-9)
     scores = (KB_MATRIX @ qv_norm) / KB_NORMS.squeeze()
+    # Ensure k doesn't exceed KB size
+    k = min(k, len(KB))
     top_indices = np.argpartition(scores, -k)[-k:]
     top_indices = top_indices[np.argsort(scores[top_indices])[::-1]]
     return [KB[i] for i in top_indices]
 
 def sanitize_input(text: str) -> str:
     text = text[:MAX_QUESTION_LENGTH]
-    text = re.sub(r"(system|assistant|user)\s*:", "", text, flags=re.IGNORECASE)
+    # Remove potential role injection patterns more robustly
+    text = re.sub(r"\b(system|assistant|user)\s*:?", "", text, flags=re.IGNORECASE)
     return text.strip()
 
 def validate_history(history: list[dict]) -> list[dict]:
+    # Limit history size to prevent DoS
+    if len(history) > 10:
+        logger.warning(f"History truncated from {len(history)} to 10 messages")
+        history = history[-10:]
+    
     validated = []
     for msg in history[-5:]:
         role = msg.get("role", "")
         content = msg.get("content", "")
         if role in ALLOWED_ROLES and isinstance(content, str):
-            validated.append({"role": role, "content": content[:MAX_QUESTION_LENGTH]})
+            # Sanitize content to prevent injection after truncation
+            sanitized_content = content[:MAX_QUESTION_LENGTH]
+            sanitized_content = re.sub(r"\b(system|assistant|user)\s*:?", "", sanitized_content, flags=re.IGNORECASE)
+            validated.append({"role": role, "content": sanitized_content.strip()})
     return validated
 
 def _load_system_prompt():
