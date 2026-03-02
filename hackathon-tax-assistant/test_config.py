@@ -26,26 +26,10 @@ class TestGetDeploymentName(unittest.TestCase):
         result = get_deployment_name()
         self.assertEqual(result, "my-azure-deployment")
 
-    def test_chat_model_fallback(self):
-        """Falls back to CHAT_MODEL when DEPLOYMENT_NAME is not set."""
+    def test_returns_none_when_deployment_name_not_set(self):
+        """Returns None when DEPLOYMENT_NAME is not set."""
         env = os.environ.copy()
         env.pop("DEPLOYMENT_NAME", None)
-        with patch.dict(os.environ, env, clear=True):
-            os.environ["CHAT_MODEL"] = "phi-3-mini"
-            result = get_deployment_name()
-            self.assertEqual(result, "phi-3-mini")
-
-    @patch.dict(os.environ, {"DEPLOYMENT_NAME": "azure-dep", "CHAT_MODEL": "phi-3-mini"}, clear=False)
-    def test_deployment_name_priority_over_chat_model(self):
-        """DEPLOYMENT_NAME takes priority over CHAT_MODEL."""
-        result = get_deployment_name()
-        self.assertEqual(result, "azure-dep")
-
-    def test_returns_none_when_nothing_set(self):
-        """Returns None when neither DEPLOYMENT_NAME nor CHAT_MODEL is set."""
-        env = os.environ.copy()
-        env.pop("DEPLOYMENT_NAME", None)
-        env.pop("CHAT_MODEL", None)
         with patch.dict(os.environ, env, clear=True):
             result = get_deployment_name()
             self.assertIsNone(result)
