@@ -27,13 +27,12 @@ def _verbose() -> bool:
     return os.environ.get("OPENAI_VERBOSE", "").lower() in {"1", "true", "yes"}
 
 def get_deployment_name() -> str:
-    """Return the deployment name for the given model.
+    """Return the deployment/model name to use for chat completions.
 
-    This is a simple heuristic that assumes the model name is the same as the deployment name
-    with the first character capitalized. This is true for all models deployed by the OpenAI
-    team, but may not be true for models deployed by other teams.
+    Checks DEPLOYMENT_NAME first (Azure-style), then falls back to CHAT_MODEL.
+    Returns None only if neither is set.
     """
-    return os.environ.get(f"DEPLOYMENT_NAME")
+    return os.environ.get("DEPLOYMENT_NAME") or os.environ.get("CHAT_MODEL")
 
 def create_client(purpose: Optional[str] = None) -> OpenAI:
     """Return an OpenAI client configured for Azure resource or global endpoint.

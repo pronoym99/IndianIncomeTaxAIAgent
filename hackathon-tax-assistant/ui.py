@@ -12,6 +12,8 @@ from azure_openai import create_client, get_deployment_name
 
 load_dotenv()
 
+CHAT_MODEL = os.environ.get("CHAT_MODEL")
+
 # Page configuration
 st.set_page_config(
     page_title="AI Tax Assistant", 
@@ -266,6 +268,7 @@ def build_message_with_files(user_input: str, files: List[Dict[str, Any]]) -> st
 
 def call_model(client, model: str, system_prompt: str, messages: List[Dict[str, str]]) -> str:
     """Call the AI model with the conversation."""
+    model = CHAT_MODEL or model
     try:
         full_messages = [{"role": "system", "content": system_prompt}] + messages
         
