@@ -12,7 +12,7 @@ from azure_openai import create_client, get_deployment_name
 
 load_dotenv()
 
-CHAT_MODEL = os.environ.get("CHAT_MODEL")
+CHAT_MODEL = os.getenv('CHAT_MODEL')
 
 # Page configuration
 st.set_page_config(
@@ -268,7 +268,7 @@ def build_message_with_files(user_input: str, files: List[Dict[str, Any]]) -> st
 
 def call_model(client, model: str, system_prompt: str, messages: List[Dict[str, str]]) -> str:
     """Call the AI model with the conversation."""
-    model = CHAT_MODEL or model
+    model = CHAT_MODEL
     try:
         full_messages = [{"role": "system", "content": system_prompt}] + messages
         
@@ -473,7 +473,7 @@ with st.sidebar:
     # Tax Assessment & Planning
     st.markdown("**📋 Tax Assessment:**")
     
-    if st.button("� Tax Liability Assessment", use_container_width=True):
+    if st.button("💰 Tax Liability Assessment", use_container_width=True):
         prompt = "Calculate my complete tax assessment:\n1. Total taxable income computation\n2. Tax liability under applicable slabs\n3. TDS vs actual tax liability\n4. Refund due or additional tax payable\n5. Advance tax planning for next year\n6. ITR filing guidance and timeline"
         if st.session_state.uploaded_files:
             st.session_state.messages.append({"role": "user", "content": build_message_with_files(prompt, st.session_state.uploaded_files)})
@@ -578,7 +578,7 @@ if not st.session_state.messages:
             st.rerun()
     
     with col2:
-        if st.button("� Investment Guide", use_container_width=True):
+        if st.button("📈 Investment Guide", use_container_width=True):
             question = "Recommend optimal investment strategy based on my profile: tax-saving options, wealth creation, risk allocation, and timeline-based planning."
             full_message = build_message_with_files(question, st.session_state.uploaded_files)
             st.session_state.messages.append({"role": "user", "content": full_message})
