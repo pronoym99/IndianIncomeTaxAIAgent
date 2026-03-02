@@ -26,10 +26,23 @@ class TestGetDeploymentName(unittest.TestCase):
         result = get_deployment_name()
         self.assertEqual(result, "my-azure-deployment")
 
+    @patch.dict(os.environ, {"DEPLOYMENT_NAME": ""}, clear=False)
+    def test_deployment_name_empty_string(self):
+        """Empty DEPLOYMENT_NAME returns empty string (not None)."""
+        result = get_deployment_name()
+        self.assertEqual(result, "")
+
     def test_returns_none_when_deployment_name_not_set(self):
         """Returns None when DEPLOYMENT_NAME is not set."""
         env = os.environ.copy()
         env.pop("DEPLOYMENT_NAME", None)
+        with patch.dict(os.environ, env, clear=True):
+            result = get_deployment_name()
+            self.assertIsNone(result)
+
+    def test_deployment_name_ignores_chat_model(self):
+        """CHAT_MODEL alone does not affect get_deployment_name()."""
+        env = {"CHAT_MODEL": "gpt-4o"}
         with patch.dict(os.environ, env, clear=True):
             result = get_deployment_name()
             self.assertIsNone(result)
