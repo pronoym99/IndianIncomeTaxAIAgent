@@ -1,36 +1,84 @@
-import os, pickle, numpy as np
-from fastapi import FastAPI
+import os, pickle, numpy as np, re, hashlib, logging
+from pathlib import Path
+from functools import lru_cache
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from typing import List
 
 from azure_openai import create_client
 
+logger = logging.getLogger(__name__)
+
 load_dotenv()
 
 CHAT_MODEL = os.environ.get("CHAT_MODEL", "phi-3-mini")  # deployment or global model name
 EMBED_MODEL = os.environ.get("EMBED_MODEL", "text-embedding-3-small")
 TOP_K = int(os.environ.get("TOP_K", "4"))
+MAX_QUESTION_LENGTH = 2000
+ALLOWED_ROLES = {"user", "assistant"}
+EXPECTED_HASH = os.environ.get("KB_HASH")
 
-with open("vector_store/embeddings.pkl", "rb") as f:
-    KB = pickle.load(f)
+# Load knowledge base with integrity checking
+kb_path = Path("vector_store/embeddings.pkl")
+data = kb_path.read_bytes()
+if EXPECTED_HASH and hashlib.sha256(data).hexdigest() != EXPECTED_HASH:
+    raise RuntimeError("Knowledge base file integrity check failed!")
+KB = pickle.loads(data)
+
+# Validate KB structure
+if not KB or not all(isinstance(rec, dict) and "embedding" in rec for rec in KB):
+    raise ValueError("Invalid knowledge base format: all records must have 'embedding' field")
 
 client = create_client()
 
-def embed(q: str):
-    r = client.embeddings.create(model=EMBED_MODEL, input=q)
-    return np.array(r.data[0].embedding, dtype="float32")
+# Pre-compute vectorized KB matrix for fast cosine similarity
+KB_MATRIX = np.array([rec["embedding"] for rec in KB], dtype="float32")
+KB_NORMS = np.linalg.norm(KB_MATRIX, axis=1, keepdims=True) + 1e-9
 
-def cosine(a, b):
-    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9))
+@lru_cache(maxsize=256)
+def _embed_cached(q: str):
+    """Internal cached embedding function. Input should be normalized."""
+    r = client.embeddings.create(model=EMBED_MODEL, input=q)
+    return tuple(r.data[0].embedding)  # tuples are hashable for caching
+
+def embed(q: str):
+    """Get embedding for query string. Returns numpy array."""
+    return _embed_cached(q)
 
 def retrieve(query: str, k=TOP_K):
-    qv = embed(query)
-    scored = []
-    for rec in KB:
-        scored.append((cosine(qv, rec["embedding"]), rec))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return [r for _, r in scored[:k]]
+    # Normalize query for better cache hits
+    normalized_query = query.lower().strip()
+    qv = np.array(embed(normalized_query), dtype="float32")
+    qv_norm = qv / (np.linalg.norm(qv) + 1e-9)
+    scores = (KB_MATRIX @ qv_norm) / KB_NORMS.squeeze()
+    # Ensure k doesn't exceed KB size
+    k = min(k, len(KB))
+    top_indices = np.argpartition(scores, -k)[-k:]
+    top_indices = top_indices[np.argsort(scores[top_indices])[::-1]]
+    return [KB[i] for i in top_indices]
+
+def sanitize_input(text: str) -> str:
+    """Sanitize user input to prevent prompt injection."""
+    text = text[:MAX_QUESTION_LENGTH]
+    # Remove potential role injection patterns more robustly
+    text = re.sub(r"\b(system|assistant|user)\s*:?", "", text, flags=re.IGNORECASE)
+    return text.strip()
+
+def validate_history(history: list[dict]) -> list[dict]:
+    """Validate and sanitize chat history."""
+    # Limit to last 5 messages only
+    if len(history) > 5:
+        logger.warning(f"History truncated from {len(history)} to 5 messages")
+    
+    validated = []
+    for msg in history[-5:]:
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+        if role in ALLOWED_ROLES and isinstance(content, str):
+            # Reuse sanitize_input for consistent sanitization
+            validated.append({"role": role, "content": sanitize_input(content)})
+    return validated
 
 def _load_system_prompt():
     """Load the expanded system prompt from markdown; fallback to minimal prompt if unavailable.
@@ -38,15 +86,14 @@ def _load_system_prompt():
     The markdown file contains a very detailed specification. For runtime efficiency we retain
     the full spec (helps steer deterministic behaviour) but append retrieval guard rules.
     """
-    path = os.environ.get("SYSTEM_PROMPT_PATH", "docs/system_prompt.md")
+    path = Path(os.environ.get("SYSTEM_PROMPT_PATH", "docs/system_prompt.md"))
     base_fallback = (
         "You are an expert Indian Chartered Accountant–style AI Tax Assistant. "
         "Use ONLY the provided context chunks. If context is insufficient, ask for clarification or say you cannot answer. "
         "Always finish with: 'Disclaimer: Not a substitute for a licensed Chartered Accountant.'"
     )
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            content = f.read()
+        content = path.read_text(encoding="utf-8")
         # Heuristic: extract the main system role paragraph starting at 'You are an expert' line
         # to avoid sending extraneous editorial sections if file format changes.
         lines = content.splitlines()
@@ -74,7 +121,8 @@ def _load_system_prompt():
             "6. End with: 'Disclaimer: Not a substitute for a licensed Chartered Accountant.'"
         )
         return core + retrieval_rules
-    except Exception:
+    except FileNotFoundError:
+        logger.warning(f"System prompt file not found at {path}, using fallback")
         return base_fallback
 
 SYSTEM_PROMPT = _load_system_prompt()
@@ -138,17 +186,20 @@ def analyze_tax_scenario(question: str, context_text: str):
         ])
     
     return optimization_suggestions, regime_comparison, next_steps
-
+    
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
-    hits = retrieve(req.question)
+    # Sanitize user input
+    sanitized_question = sanitize_input(req.question)
+    
+    hits = retrieve(sanitized_question)
     context_blocks = []
     for i, h in enumerate(hits):
         context_blocks.append(f"[Chunk {i}]\\n{h['text']}")
     context_text = "\n\n".join(context_blocks)
     
     # Enhanced user content with tax-specific prompting
-    user_content = f"""Question: {req.question}
+    user_content = f"""Question: {sanitized_question}
 
 Context:
 {context_text}
@@ -164,12 +215,14 @@ Instructions:
 Answer:"""
     
     messages = [{"role":"system","content":SYSTEM_PROMPT}]
-    for h in req.history[-5:]:
+    # Validate and sanitize history
+    validated_history = validate_history(req.history)
+    for h in validated_history:
         messages.append(h)
     messages.append({"role":"user","content":user_content})
     
     # Generate enhanced analysis
-    optimization_suggestions, regime_comparison, next_steps = analyze_tax_scenario(req.question, context_text)
+    optimization_suggestions, regime_comparison, next_steps = analyze_tax_scenario(sanitized_question, context_text)
     
     # Get AI response
     answer = None
@@ -182,6 +235,7 @@ Answer:"""
         )
         answer = resp.choices[0].message.content
     except Exception as e:
+        logger.warning(f"Primary chat completion failed: {e}")
         try:
             r2 = client.responses.create(
                 model=CHAT_MODEL,
@@ -191,7 +245,8 @@ Answer:"""
             )
             answer = r2.output_text
         except Exception as e2:
-            raise e2
+            logger.error(f"Fallback response API also failed: {e2}")
+            raise HTTPException(status_code=502, detail="LLM service unavailable")
     
     return ChatResponse(
         answer=answer, 
