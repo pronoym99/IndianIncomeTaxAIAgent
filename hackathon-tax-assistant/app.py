@@ -86,14 +86,15 @@ def _load_system_prompt():
     The markdown file contains a very detailed specification. For runtime efficiency we retain
     the full spec (helps steer deterministic behaviour) but append retrieval guard rules.
     """
-    path = Path(os.environ.get("SYSTEM_PROMPT_PATH", "docs/system_prompt.md"))
+    path = os.environ.get("SYSTEM_PROMPT_PATH", "docs/system_prompt.md")
     base_fallback = (
         "You are an expert Indian Chartered Accountant–style AI Tax Assistant. "
         "Use ONLY the provided context chunks. If context is insufficient, ask for clarification or say you cannot answer. "
         "Always finish with: 'Disclaimer: Not a substitute for a licensed Chartered Accountant.'"
     )
     try:
-        content = path.read_text(encoding="utf-8")
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
         # Heuristic: extract the main system role paragraph starting at 'You are an expert' line
         # to avoid sending extraneous editorial sections if file format changes.
         lines = content.splitlines()
@@ -121,8 +122,7 @@ def _load_system_prompt():
             "6. End with: 'Disclaimer: Not a substitute for a licensed Chartered Accountant.'"
         )
         return core + retrieval_rules
-    except FileNotFoundError:
-        logger.warning(f"System prompt file not found at {path}, using fallback")
+    except Exception:
         return base_fallback
 
 SYSTEM_PROMPT = _load_system_prompt()
