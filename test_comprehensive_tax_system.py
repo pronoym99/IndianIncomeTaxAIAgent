@@ -12,7 +12,10 @@ Run:
 import unittest
 import pytest
 from pathlib import Path
+from dotenv import load_dotenv
 from azure_openai import create_client, get_deployment_name
+
+load_dotenv()
 
 
 # ---------------------------------------------------------------------------
