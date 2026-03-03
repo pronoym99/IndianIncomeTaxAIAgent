@@ -6,10 +6,11 @@ All tests use mocks — no live API calls or endpoints are contacted.
 import os
 import sys
 import unittest
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-# Ensure the hackathon-tax-assistant directory is importable
-sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+# Ensure the project directory is importable
+sys.path.insert(0, str(Path(__file__).parent))
 
 from azure_openai import get_deployment_name, create_client
 

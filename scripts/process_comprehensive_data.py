@@ -3,7 +3,6 @@ Enhanced Tax Data Processing Script
 Processes comprehensive tax scenarios and creates enriched training data
 """
 import json
-import os
 from pathlib import Path
 
 def process_comprehensive_tax_data():
@@ -19,7 +18,7 @@ def process_comprehensive_tax_data():
     combined_data = []
     
     for file_path in data_files:
-        if os.path.exists(file_path):
+        if Path(file_path).exists():
             print(f"Processing {file_path}...")
             with open(file_path, 'r', encoding='utf-8') as f:
                 for line in f:
@@ -110,7 +109,7 @@ def validate_training_data():
     ]
     
     for file_path in files_to_validate:
-        if os.path.exists(file_path):
+        if Path(file_path).exists():
             with open(file_path, 'r', encoding='utf-8') as f:
                 for line_num, line in enumerate(f, 1):
                     try:
@@ -166,8 +165,8 @@ def main():
     print("Starting comprehensive tax data processing...")
     
     # Create directories if they don't exist
-    os.makedirs("training_data", exist_ok=True)
-    os.makedirs("data", exist_ok=True)
+    Path("training_data").mkdir(parents=True, exist_ok=True)
+    Path("data").mkdir(parents=True, exist_ok=True)
     
     # Process training data
     total_examples = process_comprehensive_tax_data()

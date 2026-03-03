@@ -3,6 +3,7 @@
 import streamlit as st
 import os
 import base64
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 from datetime import datetime
@@ -103,7 +104,7 @@ SUPPORTED_IMG_EXT = {'.png', '.jpg', '.jpeg'}
 def load_system_prompt() -> str:
     """Load the system prompt from markdown file."""
     path = os.environ.get("SYSTEM_PROMPT_PATH", "docs/system_prompt.md")
-    if not os.path.exists(path):
+    if not Path(path).exists():
         return ("You are an expert Indian Chartered Accountant–style AI Tax Assistant. "
                 "If information is missing ask clarifying questions. End with a disclaimer.")
     
@@ -126,7 +127,7 @@ def load_system_prompt() -> str:
 def process_uploaded_file(uploaded_file) -> Dict[str, Any]:
     """Process an uploaded file and extract content."""
     file_details = {"name": uploaded_file.name, "size": uploaded_file.size}
-    file_ext = os.path.splitext(uploaded_file.name)[1].lower()
+    file_ext = Path(uploaded_file.name).suffix.lower()
     
     try:
         if file_ext in SUPPORTED_TEXT_EXT:

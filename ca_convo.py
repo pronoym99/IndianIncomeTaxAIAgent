@@ -28,6 +28,7 @@ Commands during chat:
 
 from __future__ import annotations
 import os, argparse, base64, sys
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 
@@ -41,7 +42,7 @@ SUPPORTED_IMG_EXT = {'.png', '.jpg', '.jpeg'}
 
 def load_system_prompt() -> str:
 	path = os.environ.get("SYSTEM_PROMPT_PATH", "docs/system_prompt.md")
-	if not os.path.exists(path):
+	if not Path(path).exists():
 		return ("You are an expert Indian Chartered Accountant–style AI Tax Assistant. "
 				"If information is missing ask clarifying questions. End with a disclaimer.")
 	with open(path, 'r', encoding='utf-8') as f:
@@ -61,10 +62,10 @@ def load_system_prompt() -> str:
 	return content[:4000]
 
 def read_file_payload(path: str) -> Dict[str, Any]:
-	ext = os.path.splitext(path)[1].lower()
+	ext = Path(path).suffix.lower()
 	if ext in SUPPORTED_TEXT_EXT:
 		with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-			return {"type":"text","name":os.path.basename(path),"content":f.read()}
+			return {"type":"text","name":Path(path).name,"content":f.read()}
 	if ext in SUPPORTED_PDF_EXT:
 		try:
 			import PyPDF2  # optional
@@ -76,15 +77,15 @@ def read_file_payload(path: str) -> Dict[str, Any]:
 						text_parts.append(page.extract_text() or "")
 					except Exception:
 						pass
-			return {"type":"pdf","name":os.path.basename(path),"content":"\n".join(text_parts).strip()}
+			return {"type":"pdf","name":Path(path).name,"content":"\n".join(text_parts).strip()}
 		except Exception:
 			with open(path, 'rb') as f:
 				data = base64.b64encode(f.read()).decode('ascii')
-			return {"type":"pdf-bytes","name":os.path.basename(path),"data":data}
+			return {"type":"pdf-bytes","name":Path(path).name,"data":data}
 	if ext in SUPPORTED_IMG_EXT:
 		with open(path, 'rb') as f:
 			data = base64.b64encode(f.read()).decode('ascii')
-		return {"type":"image","name":os.path.basename(path),"data":data}
+		return {"type":"image","name":Path(path).name,"data":data}
 	raise ValueError(f"Unsupported file type: {path}")
 
 class ChatSession:
@@ -100,7 +101,7 @@ class ChatSession:
     
     def add_file(self, file_path: str) -> bool:
         """Attach a file to the session. Returns True if successful."""
-        if not os.path.exists(file_path):
+        if not Path(file_path).exists():
             print(f"❌ File not found: {file_path}")
             return False
         
@@ -109,12 +110,12 @@ class ChatSession:
             # Check if already attached
             for existing in self.attached_files:
                 if existing.get('path') == file_path:
-                    print(f"📎 File already attached: {os.path.basename(file_path)}")
+                    print(f"📎 File already attached: {Path(file_path).name}")
                     return True
             
             file_data['path'] = file_path
             self.attached_files.append(file_data)
-            print(f"📎 Attached: {os.path.basename(file_path)} ({file_data['type']})")
+            print(f"📎 Attached: {Path(file_path).name} ({file_data['type']})")
             return True
         except Exception as e:
             print(f"❌ Error attaching {file_path}: {e}")

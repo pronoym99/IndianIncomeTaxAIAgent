@@ -9,9 +9,9 @@ API credentials or a deployment name are not configured.
 Run:
     pytest test_comprehensive_tax_system.py -v
 """
-import os
 import unittest
 import pytest
+from pathlib import Path
 from azure_openai import create_client, get_deployment_name
 
 
@@ -40,7 +40,7 @@ skip_no_client = pytest.mark.skipif(
 def _load_system_prompt() -> str:
     """Load the comprehensive system prompt."""
     path = "docs/system_prompt.md"
-    if os.path.exists(path):
+    if Path(path).exists():
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
     return "Default system prompt"
