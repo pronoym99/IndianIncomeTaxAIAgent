@@ -70,7 +70,7 @@ def validate_history(history: list[dict]) -> list[dict]:
     # Limit to last 5 messages only
     if len(history) > 5:
         logger.warning(f"History truncated from {len(history)} to 5 messages")
-    
+
     validated = []
     for msg in history[-5:]:
         role = msg.get("role", "")
@@ -146,10 +146,10 @@ def analyze_tax_scenario(question: str, context_text: str):
     optimization_suggestions = []
     regime_comparison = {}
     next_steps = []
-    
+
     # Check for common tax scenarios
     question_lower = question.lower()
-    
+
     # Salary/income analysis scenario
     if any(keyword in question_lower for keyword in ['salary', 'income', 'form 16', 'tax liability']):
         optimization_suggestions.extend([
@@ -162,7 +162,7 @@ def analyze_tax_scenario(question: str, context_text: str):
             "Ensure health insurance for self and parents",
             "Compare old vs new tax regime based on deduction profile"
         ])
-    
+
     # Investment planning scenario
     if any(keyword in question_lower for keyword in ['investment', '80c', 'tax saving', 'deduction']):
         optimization_suggestions.extend([
@@ -175,7 +175,7 @@ def analyze_tax_scenario(question: str, context_text: str):
             "Consider PPF for long-term stable returns",
             "Evaluate health insurance adequacy for family"
         ])
-    
+
     # Form 16 analysis scenario
     if 'form 16' in question_lower:
         next_steps.extend([
@@ -184,27 +184,24 @@ def analyze_tax_scenario(question: str, context_text: str):
             "Ensure all eligible deductions are claimed",
             "Compare tax liability under both regimes"
         ])
-    
+
     return optimization_suggestions, regime_comparison, next_steps
-    
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
     # Sanitize user input
     sanitized_question = sanitize_input(req.question)
-    
+
     hits = retrieve(sanitized_question)
-    context_blocks = []
-    for i, h in enumerate(hits):
-        context_blocks.append(f"[Chunk {i}]\\n{h['text']}")
-    context_text = "\n\n".join(context_blocks)
-    
+    context_text = "\n\n".join(f"[Chunk {i}]\n{h['text']}" for i, h in enumerate(hits))
+
     # Enhanced user content with tax-specific prompting
     user_content = f"""Question: {sanitized_question}
 
 Context:
 {context_text}
 
-Instructions: 
+Instructions:
 1. Provide comprehensive analysis using structured tables
 2. Always include tax optimization opportunities when applicable
 3. Compare old vs new regime when income/tax calculations are involved
@@ -213,17 +210,17 @@ Instructions:
 6. Use the provided context for accurate figures and calculations
 
 Answer:"""
-    
+
     messages = [{"role":"system","content":SYSTEM_PROMPT}]
     # Validate and sanitize history
     validated_history = validate_history(req.history)
     for h in validated_history:
         messages.append(h)
     messages.append({"role":"user","content":user_content})
-    
+
     # Generate enhanced analysis
     optimization_suggestions, regime_comparison, next_steps = analyze_tax_scenario(sanitized_question, context_text)
-    
+
     # Get AI response
     answer = None
     try:
@@ -247,9 +244,9 @@ Answer:"""
         except Exception as e2:
             logger.error(f"Fallback response API also failed: {e2}")
             raise HTTPException(status_code=502, detail="LLM service unavailable")
-    
+
     return ChatResponse(
-        answer=answer, 
+        answer=answer,
         sources=[f"Chunk {i}" for i,_ in enumerate(hits)],
         regime_comparison=regime_comparison,
         optimization_suggestions=optimization_suggestions,
